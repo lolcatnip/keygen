@@ -87,9 +87,6 @@ typedef unsigned quad u64;
 extern bool b58tobin(void *bin, size_t *binszp, const char *b58, size_t b58sz);
 extern bool b58enc(char *b58, const void *data, size_t binsz);
 
-/* cpu.c */
-extern int  get_num_cpus(void);
-extern void set_working_cpu(int thread);
 
 /* rmd160.c */
 extern void rmd160_init(void);
