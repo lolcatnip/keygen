@@ -40,12 +40,37 @@ static void secp256k1_ecmult_gen_context_build(secp256k1_ecmult_gen_context *ctx
         static const unsigned char nums_b32[33] = "The scalar for this x is unknown";
         secp256k1_fe nums_x;
         secp256k1_ge nums_ge;
-        VERIFY_CHECK(secp256k1_fe_set_b32(&nums_x, nums_b32));
-        VERIFY_CHECK(secp256k1_ge_set_xo_var(&nums_ge, &nums_x, 0));
+        int r;
+        r = secp256k1_fe_set_b32(&nums_x, nums_b32);
+        (void)r;
+        VERIFY_CHECK(r);
+        r = secp256k1_ge_set_xo_var(&nums_ge, &nums_x, 0);
+        (void)r;
+        VERIFY_CHECK(r);
         secp256k1_gej_set_ge(&nums_gej, &nums_ge);
         /* Add G to make the bits in x uniformly distributed. */
         secp256k1_gej_add_ge_var(&nums_gej, &nums_gej, &secp256k1_ge_const_g, NULL);
     }
+
+    /* prec is calculated as a 1024 element array but will be treated as prec[64][16].                          */
+    /* We shall call the first index the "window" index:                                                        */
+    /*   It corresponds to the 4-bit "window" position of the input scalar that we're multiplying against.      */
+    /* The second index is the "bits" index:                                                                    */
+    /*   It corresponds to the actual raw bits shifted off the scalar.  We use 4-bit windows, so 2^4 values.    */
+    /* This gives us prec[window][bits].                                                                        */
+    /*                                                                                                          */
+    /* Each row, prec[window][*] starts with (16^window * G) and each column is the previous + G.               */
+    /* This means we can extract 4 bits at a time from the scalar, look up the element associated with          */
+    /*   those bits at that window position, then add it to our accumulated result.                             */
+    /* This gives us: result = sum(prec[window][shift(scalar, 4)], window = 0 to 63)                            */
+    /*                                                                                                          */
+    /* Furthermore, each window has (2^window * blind) added to it.                                             */
+    /* This is probably to ensure that there won't be any point at infinity values in the prec table.           */
+    /* This also has the unfortunate side effect of:                                                            */
+    /*   1) No additions can be skipped (X + inf = X, but now we have no points at infinity)                    */
+    /*   2) Each row in the prec table shifts the result by 2^window * blind                                    */
+    /* Because of #2, the final row of the table uses (1-2^window) * blind:                                     */
+    /*   blind * (1b + 10b + ... + 10..0b + -11..1b) = blind * 0                                                */
 
     /* compute prec. */
     {
@@ -118,17 +143,21 @@ static void secp256k1_ecmult_gen_context_clear(secp256k1_ecmult_gen_context *ctx
 
 static void secp256k1_ecmult_gen(const secp256k1_ecmult_gen_context *ctx, secp256k1_gej *r, const secp256k1_scalar *gn) {
     secp256k1_ge add;
-    secp256k1_ge_storage adds;
+    /* secp256k1_ge_storage adds; */
     secp256k1_scalar gnb;
     int bits;
-    int i, j;
-    memset(&adds, 0, sizeof(adds));
+    int /* i, */ j;
+
+    /* memset(&adds, 0, sizeof(adds)); */
     *r = ctx->initial;
+
     /* Blind scalar/point multiplication by computing (n-b)G + bG instead of nG. */
     secp256k1_scalar_add(&gnb, gn, &ctx->blind);
     add.infinity = 0;
+
     for (j = 0; j < 64; j++) {
         bits = secp256k1_scalar_get_bits(&gnb, j * 4, 4);
+#if 0
         for (i = 0; i < 16; i++) {
             /** This uses a conditional move to avoid any secret data in array indexes.
              *   _Any_ use of secret indexes has been demonstrated to result in timing
@@ -143,11 +172,16 @@ static void secp256k1_ecmult_gen(const secp256k1_ecmult_gen_context *ctx, secp25
             secp256k1_ge_storage_cmov(&adds, &(*ctx->prec)[j][i], i == bits);
         }
         secp256k1_ge_from_storage(&add, &adds);
+#endif
+        secp256k1_ge_from_storage(&add, &(*ctx->prec)[j][bits]);
         secp256k1_gej_add_ge(r, r, &add);
     }
+
+#if 0
     bits = 0;
     secp256k1_ge_clear(&add);
     secp256k1_scalar_clear(&gnb);
+#endif
 }
 
 /* Setup blinding values for secp256k1_ecmult_gen. */
@@ -176,13 +210,13 @@ static void secp256k1_ecmult_gen_blind(secp256k1_ecmult_gen_context *ctx, const 
         memcpy(keydata + 32, seed32, 32);
     }
     secp256k1_rfc6979_hmac_sha256_initialize(&rng, keydata, seed32 ? 64 : 32);
-    memset(keydata, 0, sizeof(keydata));
+    /* memset(keydata, 0, sizeof(keydata)); */
     /* Retry for out of range results to achieve uniformity. */
     do {
         secp256k1_rfc6979_hmac_sha256_generate(&rng, nonce32, 32);
         retry = !secp256k1_fe_set_b32(&s, nonce32);
         retry |= secp256k1_fe_is_zero(&s);
-    } while (retry);
+    } while (retry); /* This branch true is cryptographically unreachable. Requires sha256_hmac output > Fp. */
     /* Randomize the projection to defend against multiplier sidechannels. */
     secp256k1_gej_rescale(&ctx->initial, &s);
     secp256k1_fe_clear(&s);
@@ -191,9 +225,9 @@ static void secp256k1_ecmult_gen_blind(secp256k1_ecmult_gen_context *ctx, const 
         secp256k1_scalar_set_b32(&b, nonce32, &retry);
         /* A blinding value of 0 works, but would undermine the projection hardening. */
         retry |= secp256k1_scalar_is_zero(&b);
-    } while (retry);
+    } while (retry); /* This branch true is cryptographically unreachable. Requires sha256_hmac output > order. */
     secp256k1_rfc6979_hmac_sha256_finalize(&rng);
-    memset(nonce32, 0, 32);
+    /* memset(nonce32, 0, 32); */
     secp256k1_ecmult_gen(ctx, &gb, &b);
     secp256k1_scalar_negate(&b, &b);
     ctx->blind = b;

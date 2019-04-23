@@ -29,6 +29,15 @@ SECP256K1_INLINE static int secp256k1_fe_equal_var(const secp256k1_fe *a, const 
 }
 
 static int secp256k1_fe_sqrt_var(secp256k1_fe *r, const secp256k1_fe *a) {
+    /** Given that p is congruent to 3 mod 4, we can compute the square root of
+     *  a mod p as the (p+1)/4'th power of a.
+     *
+     *  As (p+1)/4 is an even number, it will have the same result for a and for
+     *  (-a). Only one of these two numbers actually has a square root however,
+     *  so we test at the end by squaring and comparing to the input.
+     *  Also because (p+1)/4 is an even number, the computed square root is
+     *  itself always a square (a ** ((p+1)/4) is the square of a ** ((p+1)/8)).
+     */
     secp256k1_fe x2, x3, x6, x9, x11, x22, x44, x88, x176, x220, x223, t1;
     int j;
 
@@ -224,18 +233,38 @@ static void secp256k1_fe_inv_var(secp256k1_fe *r, const secp256k1_fe *a) {
         0xFF,0xFF,0xFF,0xFE,0xFF,0xFF,0xFC,0x2F
     };
     unsigned char b[32];
+    int res;
     secp256k1_fe c = *a;
     secp256k1_fe_normalize_var(&c);
+
+    /*
+        Never call secp256k1_num_mod_inverse() with a = 0.
+        The constant time secp256k1_fe_inv doesn't care and doesn't check.
+        Now that we force everybody to use this variable runtime version, we need
+        to make sure that a != 0 because secp256k1_num_mod_inverse will check that GCD(a, m) == 1
+    */
+    if ( secp256k1_fe_is_zero(&c) ) {
+        /* Garbage in, garbage out */
+        *r = *a;
+        return;
+    }
+
     secp256k1_fe_get_b32(b, &c);
     secp256k1_num_set_bin(&n, b, 32);
     secp256k1_num_set_bin(&m, prime, 32);
     secp256k1_num_mod_inverse(&n, &n, &m);
     secp256k1_num_get_bin(b, 32, &n);
-    VERIFY_CHECK(secp256k1_fe_set_b32(r, b));
+    res = secp256k1_fe_set_b32(r, b);
+    (void)res;
+#ifdef VERIFY
     /* Verify the result is the (unique) valid inverse using non-GMP code. */
+    VERIFY_CHECK(res);
     secp256k1_fe_mul(&c, &c, r);
     secp256k1_fe_add(&c, &negone);
     CHECK(secp256k1_fe_normalizes_to_zero_var(&c));
+#else
+    (void)negone;
+#endif
 #else
 #error "Please select field inverse implementation"
 #endif
@@ -252,20 +281,35 @@ static void secp256k1_fe_inv_all_var(size_t len, secp256k1_fe *r, const secp256k
 
     r[0] = a[0];
 
+    /* a = {a,  b,   c} */
+    /* r = {a, ab, abc} */
     i = 0;
     while (++i < len) {
         secp256k1_fe_mul(&r[i], &r[i - 1], &a[i]);
     }
 
+    /* u = (abc)^1 */
     secp256k1_fe_inv_var(&u, &r[--i]);
 
     while (i > 0) {
+        /* j = current, i = previous    */
         size_t j = i--;
+
+        /* r[cur] = r[prev] * u         */
+        /* r[cur] = (ab)    * (abc)^-1  */
+        /* r[cur] = c^-1                */
+        /* r = {a, ab, c^-1}            */
         secp256k1_fe_mul(&r[j], &r[i], &u);
+
+        /* u = (abc)^-1 * c = (ab)^-1   */
         secp256k1_fe_mul(&u, &u, &a[j]);
     }
 
+    /* Last iteration handled separately, at this point u = a^-1 */
     r[0] = u;
 }
+
+/* Force callers to use variable runtime versions */
+#define secp256k1_fe_inv(r, a) secp256k1_fe_inv_var(r, a)
 
 #endif

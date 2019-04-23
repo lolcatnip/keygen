@@ -236,7 +236,7 @@ static int secp256k1_fe_normalizes_to_zero_var(secp256k1_fe *r) {
     z1 = z0 ^ 0x3D0UL;
 
     /* Fast return path should catch the majority of cases */
-    if ((z0 != 0UL) & (z1 != 0x3FFFFFFUL)) {
+    if ((z0 != 0UL) && (z1 != 0x3FFFFFFUL)) {
         return 0;
     }
 
@@ -428,6 +428,14 @@ SECP256K1_INLINE static void secp256k1_fe_add(secp256k1_fe *r, const secp256k1_f
     secp256k1_fe_verify(r);
 #endif
 }
+
+#if defined(USE_EXTERNAL_ASM)
+
+/* External assembler implementation */
+void secp256k1_fe_mul_inner(uint32_t *r, const uint32_t *a, const uint32_t * SECP256K1_RESTRICT b);
+void secp256k1_fe_sqr_inner(uint32_t *r, const uint32_t *a);
+
+#else
 
 #ifdef VERIFY
 #define VERIFY_BITS(x, n) VERIFY_CHECK(((x) >> (n)) == 0)
@@ -1037,7 +1045,7 @@ SECP256K1_INLINE static void secp256k1_fe_sqr_inner(uint32_t *r, const uint32_t 
     VERIFY_BITS(r[2], 27);
     /* [r9 r8 r7 r6 r5 r4 r3 r2 r1 r0] = [p18 p17 p16 p15 p14 p13 p12 p11 p10 p9 p8 p7 p6 p5 p4 p3 p2 p1 p0] */
 }
-
+#endif
 
 static void secp256k1_fe_mul(secp256k1_fe *r, const secp256k1_fe *a, const secp256k1_fe * SECP256K1_RESTRICT b) {
 #ifdef VERIFY
@@ -1069,39 +1077,37 @@ static void secp256k1_fe_sqr(secp256k1_fe *r, const secp256k1_fe *a) {
 }
 
 static SECP256K1_INLINE void secp256k1_fe_cmov(secp256k1_fe *r, const secp256k1_fe *a, int flag) {
-    uint32_t mask0, mask1;
-    mask0 = flag + ~((uint32_t)0);
-    mask1 = ~mask0;
-    r->n[0] = (r->n[0] & mask0) | (a->n[0] & mask1);
-    r->n[1] = (r->n[1] & mask0) | (a->n[1] & mask1);
-    r->n[2] = (r->n[2] & mask0) | (a->n[2] & mask1);
-    r->n[3] = (r->n[3] & mask0) | (a->n[3] & mask1);
-    r->n[4] = (r->n[4] & mask0) | (a->n[4] & mask1);
-    r->n[5] = (r->n[5] & mask0) | (a->n[5] & mask1);
-    r->n[6] = (r->n[6] & mask0) | (a->n[6] & mask1);
-    r->n[7] = (r->n[7] & mask0) | (a->n[7] & mask1);
-    r->n[8] = (r->n[8] & mask0) | (a->n[8] & mask1);
-    r->n[9] = (r->n[9] & mask0) | (a->n[9] & mask1);
 #ifdef VERIFY
     if (a->magnitude > r->magnitude) {
         r->magnitude = a->magnitude;
     }
     r->normalized &= a->normalized;
 #endif
+    if ( !flag ) { return; }
+
+    r->n[0] = a->n[0];
+    r->n[1] = a->n[1];
+    r->n[2] = a->n[2];
+    r->n[3] = a->n[3];
+    r->n[4] = a->n[4];
+    r->n[5] = a->n[5];
+    r->n[6] = a->n[6];
+    r->n[7] = a->n[7];
+    r->n[8] = a->n[8];
+    r->n[9] = a->n[9];
 }
 
 static SECP256K1_INLINE void secp256k1_fe_storage_cmov(secp256k1_fe_storage *r, const secp256k1_fe_storage *a, int flag) {
-    uint32_t mask0, mask1;
-    mask0 = flag + ~((uint32_t)0);
-    mask1 = ~mask0;
-    r->n[0] = (r->n[0] & mask0) | (a->n[0] & mask1);
-    r->n[1] = (r->n[1] & mask0) | (a->n[1] & mask1);
-    r->n[2] = (r->n[2] & mask0) | (a->n[2] & mask1);
-    r->n[3] = (r->n[3] & mask0) | (a->n[3] & mask1);
-    r->n[4] = (r->n[4] & mask0) | (a->n[4] & mask1);
-    r->n[5] = (r->n[5] & mask0) | (a->n[5] & mask1);
-    r->n[6] = (r->n[6] & mask0) | (a->n[6] & mask1);
-    r->n[7] = (r->n[7] & mask0) | (a->n[7] & mask1);
+    if ( !flag ) { return; }
+
+    r->n[0] = a->n[0];
+    r->n[1] = a->n[1];
+    r->n[2] = a->n[2];
+    r->n[3] = a->n[3];
+    r->n[4] = a->n[4];
+    r->n[5] = a->n[5];
+    r->n[6] = a->n[6];
+    r->n[7] = a->n[7];
 }
 
 static void secp256k1_fe_to_storage(secp256k1_fe_storage *r, const secp256k1_fe *a) {
@@ -1134,5 +1140,9 @@ static SECP256K1_INLINE void secp256k1_fe_from_storage(secp256k1_fe *r, const se
     r->normalized = 1;
 #endif
 }
+
+/* Force callers to use variable runtime versions */
+#define secp256k1_fe_normalize(r)           secp256k1_fe_normalize_var(r)
+#define secp256k1_fe_normalizes_to_zero(r)  secp256k1_fe_normalizes_to_zero_var(r)
 
 #endif

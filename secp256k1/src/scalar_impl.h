@@ -252,9 +252,11 @@ static void secp256k1_scalar_inverse_var(secp256k1_scalar *r, const secp256k1_sc
     secp256k1_num_mod_inverse(&n, &n, &m);
     secp256k1_num_get_bin(b, 32, &n);
     secp256k1_scalar_set_b32(r, b, NULL);
+#if 0
     /* Verify that the inverse was computed correctly, without GMP code. */
     secp256k1_scalar_mul(&t, &t, r);
     CHECK(secp256k1_scalar_is_one(&t));
+#endif
 #else
 #error "Please select scalar inverse implementation"
 #endif
@@ -333,5 +335,10 @@ static void secp256k1_scalar_split_lambda(secp256k1_scalar *r1, secp256k1_scalar
     secp256k1_scalar_add(r1, r1, a);
 }
 #endif
+
+
+
+/* Force callers to use variable runtime versions */
+#define secp256k1_scalar_inverse(r, x) secp256k1_scalar_inverse_var(r, x)
 
 #endif
