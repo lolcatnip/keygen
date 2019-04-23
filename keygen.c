@@ -41,7 +41,6 @@ static bool verbose;
 /* Static Functions */
 static void announce_result(int found, const u8 result[52]);
 static void engine(int thread);
-static bool verify_key(const u8 result[52]);
 
 static void my_secp256k1_ge_set_all_gej_var(secp256k1_ge *r,
                                             const secp256k1_gej *a);
@@ -188,7 +187,7 @@ static void engine(int thread)
 
   /* Main Loop */
 
-  //printf("\r");  // This magically makes the loop faster by a smidge
+  printf("\r");  // This magically makes the loop faster by a smidge
 
   while(1) {
     /* Add 1 in Jacobian coordinates and save the result; repeat STEP times */
@@ -200,7 +199,6 @@ static void engine(int thread)
     my_secp256k1_ge_set_all_gej_var(rslt, base);
 
     for(k=0;k < STEP;k++) {
-      //thread_count[thread]++;
 
       /* Extract the 33-byte compressed public key from the group element */
       sha_block[0]=(secp256k1_fe_is_odd(&rslt[k].y) ? 0x03 : 0x02);
@@ -211,7 +209,7 @@ static void engine(int thread)
       rmd160_hash(pubkey, rmd_block);
       
       /* Compare hashed public key with byte patterns */
-      for(i=0;i < 1;i++) {
+
         if(1) {
           /* key := privkey+k+1 */
           key[0]=privkey[0];
@@ -233,7 +231,7 @@ static void engine(int thread)
           /* Pick a new random starting private key */
           goto rekey;
         }
-      }
+
     }
 
     /* Increment privkey by STEP */
@@ -243,56 +241,6 @@ static void engine(int thread)
           ++privkey[0];
   }
 }
-
-// Returns 1 if the private key (first 32 bytes of 'result') correctly produces
-// the public key (last 20 bytes of 'result').
-//
-static bool verify_key(const u8 result[52])
-{
-  secp256k1_context *sec_ctx;
-  secp256k1_scalar scalar;
-  secp256k1_gej gej;
-  secp256k1_ge ge;
-  align8 u8 sha_block[64], rmd_block[64], pubkey[20];
-  int ret, overflow;
-
-  /* Set up sha256 block for an input length of 33 bytes */
-  sha256_prepare(sha_block, 33);
-
-  /* Set up rmd160 block for an input length of 32 bytes */
-  rmd160_prepare(rmd_block, 32);
-
-  /* Initialize the secp256k1 context */
-  sec_ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-
-  /* Copy private key to secp256k1 scalar format */
-  secp256k1_scalar_set_b32(&scalar, result, &overflow);
-  if(overflow) {
-    secp256k1_context_destroy(sec_ctx);
-    return 0;  /* Invalid private key */
-  }
-
-  /* Create a group element for the private key we're verifying */
-  secp256k1_ecmult_gen(&sec_ctx->ecmult_gen_ctx, &gej, &scalar);
-
-  /* Convert to affine coordinates */
-  secp256k1_ge_set_gej_var(&ge, &gej);
-
-  /* Extract the 33-byte compressed public key from the group element */
-  sha_block[0]=(secp256k1_fe_is_odd(&ge.y) ? 0x03 : 0x02);
-  secp256k1_fe_get_b32(sha_block+1, &ge.x);
-
-  /* Hash public key */
-  sha256_hash(rmd_block, sha_block);
-  rmd160_hash(pubkey, rmd_block);
-
-  /* Verify that the hashed public key matches the result */
-  ret=!memcmp(pubkey, result+32, 20);
-
-  secp256k1_context_destroy(sec_ctx);
-  return ret;
-}
-
 
 /**** libsecp256k1 Overrides *************************************************/
 
