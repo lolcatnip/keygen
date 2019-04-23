@@ -209,7 +209,7 @@ static int secp256k1_fe_normalizes_to_zero_var(secp256k1_fe *r) {
     z1 = z0 ^ 0x1000003D0ULL;
 
     /* Fast return path should catch the majority of cases */
-    if ((z0 != 0ULL) & (z1 != 0xFFFFFFFFFFFFFULL)) {
+    if ((z0 != 0ULL) && (z1 != 0xFFFFFFFFFFFFFULL)) {
         return 0;
     }
 
@@ -405,30 +405,28 @@ static void secp256k1_fe_sqr(secp256k1_fe *r, const secp256k1_fe *a) {
 }
 
 static SECP256K1_INLINE void secp256k1_fe_cmov(secp256k1_fe *r, const secp256k1_fe *a, int flag) {
-    uint64_t mask0, mask1;
-    mask0 = flag + ~((uint64_t)0);
-    mask1 = ~mask0;
-    r->n[0] = (r->n[0] & mask0) | (a->n[0] & mask1);
-    r->n[1] = (r->n[1] & mask0) | (a->n[1] & mask1);
-    r->n[2] = (r->n[2] & mask0) | (a->n[2] & mask1);
-    r->n[3] = (r->n[3] & mask0) | (a->n[3] & mask1);
-    r->n[4] = (r->n[4] & mask0) | (a->n[4] & mask1);
 #ifdef VERIFY
     if (a->magnitude > r->magnitude) {
         r->magnitude = a->magnitude;
     }
     r->normalized &= a->normalized;
 #endif
+    if ( !flag ) { return; }
+
+    r->n[0] = a->n[0];
+    r->n[1] = a->n[1];
+    r->n[2] = a->n[2];
+    r->n[3] = a->n[3];
+    r->n[4] = a->n[4];
 }
 
 static SECP256K1_INLINE void secp256k1_fe_storage_cmov(secp256k1_fe_storage *r, const secp256k1_fe_storage *a, int flag) {
-    uint64_t mask0, mask1;
-    mask0 = flag + ~((uint64_t)0);
-    mask1 = ~mask0;
-    r->n[0] = (r->n[0] & mask0) | (a->n[0] & mask1);
-    r->n[1] = (r->n[1] & mask0) | (a->n[1] & mask1);
-    r->n[2] = (r->n[2] & mask0) | (a->n[2] & mask1);
-    r->n[3] = (r->n[3] & mask0) | (a->n[3] & mask1);
+    if ( !flag ) { return; }
+
+    r->n[0] = a->n[0];
+    r->n[1] = a->n[1];
+    r->n[2] = a->n[2];
+    r->n[3] = a->n[3];
 }
 
 static void secp256k1_fe_to_storage(secp256k1_fe_storage *r, const secp256k1_fe *a) {
@@ -452,5 +450,9 @@ static SECP256K1_INLINE void secp256k1_fe_from_storage(secp256k1_fe *r, const se
     r->normalized = 1;
 #endif
 }
+
+/* Force callers to use variable runtime versions */
+#define secp256k1_fe_normalize(r)           secp256k1_fe_normalize_var(r)
+#define secp256k1_fe_normalizes_to_zero(r)  secp256k1_fe_normalizes_to_zero_var(r)
 
 #endif

@@ -24,7 +24,7 @@ static const secp256k1_ge secp256k1_ge_const_g = SECP256K1_GE_CONST(
 );
 
 static void secp256k1_ge_set_gej_zinv(secp256k1_ge *r, const secp256k1_gej *a, const secp256k1_fe *zi) {
-    secp256k1_fe zi2; 
+    secp256k1_fe zi2;
     secp256k1_fe zi3;
     secp256k1_fe_sqr(&zi2, zi);
     secp256k1_fe_mul(&zi3, &zi2, zi);
@@ -165,7 +165,7 @@ static void secp256k1_ge_clear(secp256k1_ge *r) {
     secp256k1_fe_clear(&r->y);
 }
 
-static int secp256k1_ge_set_xo_var(secp256k1_ge *r, const secp256k1_fe *x, int odd) {
+static int secp256k1_ge_set_xquad_var(secp256k1_ge *r, const secp256k1_fe *x) {
     secp256k1_fe x2, x3, c;
     r->x = *x;
     secp256k1_fe_sqr(&x2, x);
@@ -173,7 +173,11 @@ static int secp256k1_ge_set_xo_var(secp256k1_ge *r, const secp256k1_fe *x, int o
     r->infinity = 0;
     secp256k1_fe_set_int(&c, 7);
     secp256k1_fe_add(&c, &x3);
-    if (!secp256k1_fe_sqrt_var(&r->y, &c)) {
+    return secp256k1_fe_sqrt_var(&r->y, &c);
+}
+
+static int secp256k1_ge_set_xo_var(secp256k1_ge *r, const secp256k1_fe *x, int odd) {
+    if (!secp256k1_ge_set_xquad_var(r, x)) {
         return 0;
     }
     secp256k1_fe_normalize_var(&r->y);
@@ -181,6 +185,7 @@ static int secp256k1_ge_set_xo_var(secp256k1_ge *r, const secp256k1_fe *x, int o
         secp256k1_fe_negate(&r->y, &r->y, 1);
     }
     return 1;
+
 }
 
 static void secp256k1_gej_set_ge(secp256k1_gej *r, const secp256k1_ge *a) {
@@ -251,6 +256,12 @@ static void secp256k1_gej_double_var(secp256k1_gej *r, const secp256k1_gej *a, s
     /** For secp256k1, 2Q is infinity if and only if Q is infinity. This is because if 2Q = infinity,
      *  Q must equal -Q, or that Q.y == -(Q.y), or Q.y is 0. For a point on y^2 = x^3 + 7 to have
      *  y=0, x^3 must be -7 mod p. However, -7 has no cube root mod p.
+     *
+     *  Having said this, if this function receives a point on a sextic twist, e.g. by
+     *  a fault attack, it is possible for y to be 0. This happens for y^2 = x^3 + 6,
+     *  since -6 does have a cube root mod p. For this point, this function will not set
+     *  the infinity flag even though the point doubles to infinity, and the result
+     *  point will be gibberish (z = 0 but infinity = 0).
      */
     r->infinity = a->infinity;
     if (r->infinity) {
@@ -349,7 +360,6 @@ static void secp256k1_gej_add_var(secp256k1_gej *r, const secp256k1_gej *a, cons
 static void secp256k1_gej_add_ge_var(secp256k1_gej *r, const secp256k1_gej *a, const secp256k1_ge *b, secp256k1_fe *rzr) {
     /* 8 mul, 3 sqr, 4 normalize, 12 mul_int/add/negate */
     secp256k1_fe z12, u1, u2, s1, s2, h, i, i2, h2, h3, t;
-#if 0
     if (a->infinity) {
         VERIFY_CHECK(rzr == NULL);
         secp256k1_gej_set_ge(r, b);
@@ -363,7 +373,6 @@ static void secp256k1_gej_add_ge_var(secp256k1_gej *r, const secp256k1_gej *a, c
         return;
     }
     r->infinity = 0;
-#endif
 
     secp256k1_fe_sqr(&z12, &a->z);
     u1 = a->x; secp256k1_fe_normalize_weak(&u1);
@@ -372,7 +381,6 @@ static void secp256k1_gej_add_ge_var(secp256k1_gej *r, const secp256k1_gej *a, c
     secp256k1_fe_mul(&s2, &b->y, &z12); secp256k1_fe_mul(&s2, &s2, &a->z);
     secp256k1_fe_negate(&h, &u1, 1); secp256k1_fe_add(&h, &u2);
     secp256k1_fe_negate(&i, &s1, 1); secp256k1_fe_add(&i, &s2);
-#if 0
     if (secp256k1_fe_normalizes_to_zero_var(&h)) {
         if (secp256k1_fe_normalizes_to_zero_var(&i)) {
             secp256k1_gej_double_var(r, a, rzr);
@@ -384,15 +392,12 @@ static void secp256k1_gej_add_ge_var(secp256k1_gej *r, const secp256k1_gej *a, c
         }
         return;
     }
-#endif
     secp256k1_fe_sqr(&i2, &i);
     secp256k1_fe_sqr(&h2, &h);
     secp256k1_fe_mul(&h3, &h, &h2);
-#if 0
     if (rzr != NULL) {
         *rzr = h;
     }
-#endif
     secp256k1_fe_mul(&r->z, &a->z, &h);
     secp256k1_fe_mul(&t, &u1, &h2);
     r->x = t; secp256k1_fe_mul_int(&r->x, 2); secp256k1_fe_add(&r->x, &h3); secp256k1_fe_negate(&r->x, &r->x, 3); secp256k1_fe_add(&r->x, &i2);
@@ -623,5 +628,8 @@ static void secp256k1_ge_mul_lambda(secp256k1_ge *r, const secp256k1_ge *a) {
     secp256k1_fe_mul(&r->x, &r->x, &beta);
 }
 #endif
+
+/* Force callers to use variable runtime versions */
+#define secp256k1_gej_add_ge(r, a, b) secp256k1_gej_add_ge_var(r, a, b, NULL)
 
 #endif
