@@ -4,7 +4,7 @@ Keygen FAST Bitcoin Generator
 Forked from Fast Vanity Bitcoin address generator for Linux using the
 [secp256k1_fast_unsafe](https://github.com/llamasoft/secp256k1_fast_unsafe) library.
 
-Modified by magnuspub From the original work of `gandalf@winds.org`
+Modified by 'magnuspub' From the original work of `gandalf@winds.org`
 
 Example
 -------
