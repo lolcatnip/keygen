@@ -1,6 +1,8 @@
 Keygen FAST Bitcoin Generator
 ===============
 
+Capable of reaching ~20000 address per second for single thread.
+
 Forked from Fast Vanity Bitcoin address generator for Linux using the
 [secp256k1_fast_unsafe](https://github.com/llamasoft/secp256k1_fast_unsafe) library.
 
@@ -9,16 +11,22 @@ Modified by `magnuspub` From the original work of `gandalf@winds.org`
 Example
 -------
 Example program execution:
-(Note: Do _not_ send coins to this address!)
+(Note: This application is USELESS, you cannot generate tons of random address
+       hoping to find at least one, Bitcoin is STRONG!)
 
+    // Generate bitcoin address and store to a file
     $ keygen >> btc.list
     $ cat btc.list
      Address: 1Vanity8HEFQDR7ZFsAUFeRR67AG38PcR Privkey: L3jTmJvNtjNrUw5SJJGFfGTog46fLutsQJ4XG66YWHMV5UmgFWqZ
      ...
+    
+    // Create a file with address you want to find
     $ cat pattern.list
      1Vanity8HEFQDR7ZFsAUFeRR67AG38PcR
      ...
-    $ cat ./btc.list |awk '/Address/ {print $2}' |awk 'NR==FNR{arr[$0];next} $0 in arr' '/pattern.list' -
+     
+    // Search address from pattern.list 
+    $ cat ./btc.list |awk '/Address/ {print $2}' |awk 'NR==FNR{arr[$0];next} $0 in arr' './pattern.list' -
 
 Build Prerequisites
 -------------------
