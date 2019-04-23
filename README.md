@@ -20,7 +20,7 @@ Example program execution:
      Address: 1Vanity8HEFQDR7ZFsAUFeRR67AG38PcR Privkey: L3jTmJvNtjNrUw5SJJGFfGTog46fLutsQJ4XG66YWHMV5UmgFWqZ
      ...
     
-    // Create a file with address you want to find
+    // Create a file with address you want to find (one per line)
     $ cat pattern.list
      1Vanity8HEFQDR7ZFsAUFeRR67AG38PcR
      ...
