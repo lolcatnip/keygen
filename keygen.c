@@ -89,6 +89,9 @@ static void announce_result(int found, const u8 result[52])
 */
   /* Convert Public Key to Compressed WIF */
 
+ /* Set up checksum block; length of 32 bytes */
+  sha256_prepare(cksum_block, 32);
+
   /* Set up sha256 block for hashing the public key; length of 21 bytes */
   sha256_prepare(pub_block, 21);
   memcpy(pub_block+1, result+32, 20);
@@ -110,8 +113,7 @@ static void announce_result(int found, const u8 result[52])
   memcpy(priv_block+1, result, 32);
   priv_block[33]=0x01;  /* 1=Compressed Public Key */
 
-  /* Set up checksum block; length of 32 bytes */
-  sha256_prepare(cksum_block, 32);
+ 
 
   /* Compute checksum and copy first 4-bytes to end of private key */
   sha256_hash(cksum_block, priv_block);
