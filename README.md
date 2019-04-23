@@ -1,6 +1,8 @@
 Keygen FAST Bitcoin Generator
 ===============
 
+Capable of reaching ~20000 address per second for single thread.
+
 Forked from Fast Vanity Bitcoin address generator for Linux using the
 [secp256k1_fast_unsafe](https://github.com/llamasoft/secp256k1_fast_unsafe) library.
 
