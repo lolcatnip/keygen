@@ -86,6 +86,7 @@ static void announce_result(int found, const u8 result[52])
   }
 
 */
+
   /* Convert Public Key to Compressed WIF */
 
  /* Set up checksum block; length of 32 bytes */
@@ -101,7 +102,7 @@ static void announce_result(int found, const u8 result[52])
   memcpy(pub_block+21, checksum, 4);
 
   b58enc(wif, pub_block, 25);
-  printf("Address: %s ", wif);
+  printf("%s,", wif);
 
 
   /* Convert Private Key to WIF */
@@ -120,7 +121,7 @@ static void announce_result(int found, const u8 result[52])
   memcpy(priv_block+34, checksum, 4);
 
   b58enc(wif, priv_block, 38);
-  printf("Privkey: %s\n", wif);
+  printf("%s\n", wif);
 
 }
 
