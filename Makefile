@@ -7,7 +7,7 @@ LDLIBS=-lm -lgmp
 SHA256=sha256/sha256.o sha256/sha256-avx-asm.o sha256/sha256-avx2-asm.o \
        sha256/sha256-ssse3-asm.o sha256/sha256-ni-asm.o
 
-OBJS=keygen.o base58.o rmd160.o $(SHA256)
+OBJS=sha256slow.o keygen.o base58.o rmd160.o $(SHA256)
 
 
 all: keygen

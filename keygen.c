@@ -32,6 +32,8 @@ Forked from - Super Vanitygen - Vanity Bitcoin address generator */
 #include "src/libsecp256k1-config.h"
 #include "src/secp256k1.c"
 
+#include "sha256slow.h"
+
 #define MY_VERSION "0.3"
 
 /* Global command-line settings */
@@ -43,10 +45,10 @@ static void announce_result(int found, const u8 result[52]);
 static void engine(int thread);
 
 static void my_secp256k1_ge_set_all_gej_var(secp256k1_ge *r,
-                                            const secp256k1_gej *a);
+					    const secp256k1_gej *a);
 static void my_secp256k1_gej_add_ge_var(secp256k1_gej *r,
-                                        const secp256k1_gej *a,
-                                        const secp256k1_ge *b);
+					const secp256k1_gej *a,
+					const secp256k1_ge *b);
 
 
 /**** Main Program ***********************************************************/
@@ -70,7 +72,7 @@ int main(int argc, char *argv[])
 static void announce_result(int found, const u8 result[52])
 {
   align8 u8 priv_block[64], pub_block[64], cksum_block[64];
-  align8 u8 wif[64], checksum[32];
+  align8 u8 priv_wif[64], wif[64], checksum[32];
 
   /* Display matching keys in hexadecimal */
 /*  if(verbose) {
@@ -87,6 +89,23 @@ static void announce_result(int found, const u8 result[52])
 
 */
 
+  /* Convert Private Key to WIF */
+
+  /* Set up sha256 block for hashing the private key; length of 34 bytes */
+  sha256_prepare(priv_block, 34);
+  priv_block[0]=0x80;
+  memcpy(priv_block+1, result, 32);
+  priv_block[33]=0x01;	/* 1=Compressed Public Key */
+
+  /* Compute checksum and copy first 4-bytes to end of private key */
+  sha256_hash(cksum_block, priv_block);
+  sha256_hash(checksum, cksum_block);
+  memcpy(priv_block+34, checksum, 4);
+
+  b58enc(priv_wif, priv_block, 38);
+  /* printf("%s\n", priv_wif); */
+
+
   /* Convert Public Key to Compressed WIF */
 
  /* Set up checksum block; length of 32 bytes */
@@ -102,26 +121,24 @@ static void announce_result(int found, const u8 result[52])
   memcpy(pub_block+21, checksum, 4);
 
   b58enc(wif, pub_block, 25);
-  printf("%s,", wif);
+  printf("%s,%s\n", wif, priv_wif);
 
+  /* Convert Public Key to Uncompressed WIF */
 
-  /* Convert Private Key to WIF */
+ /* Set up checksum block; length of 32 bytes */
+  sha256_prepare(cksum_block, 32);
 
-  /* Set up sha256 block for hashing the private key; length of 34 bytes */
-  sha256_prepare(priv_block, 34);
-  priv_block[0]=0x80;
-  memcpy(priv_block+1, result, 32);
-  priv_block[33]=0x01;  /* 1=Compressed Public Key */
+  /* Set up sha256 block for hashing the public key; length of 21 bytes */
+  sha256_prepare(pub_block, 21);
+  memcpy(pub_block+1, result+52, 20);
 
- 
-
-  /* Compute checksum and copy first 4-bytes to end of private key */
-  sha256_hash(cksum_block, priv_block);
+  /* Compute checksum and copy first 4-bytes to end of public key */
+  sha256_hash(cksum_block, pub_block);
   sha256_hash(checksum, cksum_block);
-  memcpy(priv_block+34, checksum, 4);
+  memcpy(pub_block+21, checksum, 4);
 
-  b58enc(wif, priv_block, 38);
-  printf("%s\n", wif);
+  b58enc(wif, pub_block, 25);
+  printf("%s,%s\n", wif, priv_wif);
 
 }
 
@@ -136,15 +153,17 @@ static void engine(int thread)
   secp256k1_gej temp;
   secp256k1_ge offset;
 
-  align8 u8 sha_block[64], rmd_block[64], result[52], *pubkey=result+32;
+  align8 u8 sha_block[65], rmd_block[64], result[72], *pubkey_uncomp=result+32, *pubkey_comp=result+52;
   u64 privkey[4], *key=(u64 *)result;
   int i, k, fd, len;
+
+  SHA256_CTX ctx;
 
   /* Initialize the secp256k1 context */
   sec_ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
 
   /* Set up sha256 block for an input length of 33 bytes */
-  sha256_prepare(sha_block, 33);
+  /* sha256_prepare(sha_block, 33); */
 
   /* Set up rmd160 block for an input length of 32 bytes */
   rmd160_prepare(rmd_block, 32);
@@ -164,7 +183,7 @@ static void engine(int thread)
   do {
     if((len=read(fd, privkey, 32)) != 32) {
       if(len != -1)
-        errno=EAGAIN;
+	errno=EAGAIN;
       perror("/dev/urandom");
       return;
     }
@@ -201,52 +220,93 @@ static void engine(int thread)
 
     for(k=0;k < STEP;k++) {
 
-      /* Extract the 33-byte compressed public key from the group element */
-      sha_block[0]=(secp256k1_fe_is_odd(&rslt[k].y) ? 0x03 : 0x02);
+      /* /1* Extract the 33-byte compressed public key from the group element *1/ */
+      /* sha_block[0]=(secp256k1_fe_is_odd(&rslt[k].y) ? 0x03 : 0x02); */
+      /* secp256k1_fe_get_b32(sha_block+1, &rslt[k].x); */
+      /* sha_block[33]=0x10; */
+
+// PREPARE UNCOMPRESSED PUBKEY
+      sha_block[0] = 0x04;
       secp256k1_fe_get_b32(sha_block+1, &rslt[k].x);
+      secp256k1_fe_get_b32(sha_block+33, &rslt[k].y);
+
+// PRINT PUBKEY
+    /* for(int i = 0; i < 65; i++) */
+    /*     printf("%02x", sha_block[i]); */
+    /* printf("\n"); */
+
+// HASH UNCOMPRESSED PUBKEY
+    sha256_init_slow(&ctx);
+    sha256_update_slow(&ctx, sha_block, 65);
+    sha256_final_slow(&ctx, rmd_block);
+
+    rmd160_hash(pubkey_uncomp, rmd_block);
+// PRINT SHA256
+    /* for(int i = 0; i < 32; i++) */
+    /*     printf("%02x", rmd_block[i]); */
+    /* printf("\n"); */
+
+// PREPARE COMPRESSED PUBKEY
+      sha_block[0]=(secp256k1_fe_is_odd(&rslt[k].y) ? 0x03 : 0x02);
+    /* for(int i = 0; i < 33; i++) */
+    /*     printf("%02x", sha_block[i]); */
+    /* printf("\n"); */
 
       /* Hash public key */
-      sha256_hash(rmd_block, sha_block);
-      rmd160_hash(pubkey, rmd_block);
+      /* sha256_hash(rmd_block, sha_block); */
+
+// HASH COMPRESSED PUBKEY
+    sha256_init_slow(&ctx);
+    sha256_update_slow(&ctx, sha_block, 33);
+    sha256_final_slow(&ctx, rmd_block);
+    /* for(int i = 0; i < 32; i++) */
+    /*     printf("%02x", rmd_block[i]); */
+    /* printf("\n"); */
+      rmd160_hash(pubkey_comp, rmd_block);
+
+// PRINT RIPEMD160
+    /* for(int i = 0; i < 20; i++) */
+    /*     printf("%02x", pubkey[i]); */
+    /* printf("\n"); */
       
       /* Compare hashed public key with byte patterns */
 
-        if(1) {
-          /* key := privkey+k+1 */
-          key[0]=privkey[0];
-          key[1]=privkey[1];
-          key[2]=privkey[2];
-          if((key[3]=privkey[3]+k+1) < privkey[3])
-            if(!++key[2])
-              if(!++key[1])
-                ++key[0];
+	if(1) {
+	  /* key := privkey+k+1 */
+	  key[0]=privkey[0];
+	  key[1]=privkey[1];
+	  key[2]=privkey[2];
+	  if((key[3]=privkey[3]+k+1) < privkey[3])
+	    if(!++key[2])
+	      if(!++key[1])
+		++key[0];
 
-          /* Convert key to big-endian byte format */
-          key[0]=be64(key[0]);
-          key[1]=be64(key[1]);
-          key[2]=be64(key[2]);
-          key[3]=be64(key[3]);
+	  /* Convert key to big-endian byte format */
+	  key[0]=be64(key[0]);
+	  key[1]=be64(key[1]);
+	  key[2]=be64(key[2]);
+	  key[3]=be64(key[3]);
 
-          /* Announce (PrivKey,PubKey) result */
-          announce_result(1, result);
-          /* Pick a new random starting private key */
-          goto rekey;
-        }
+	  /* Announce (PrivKey,PubKey) result */
+	  announce_result(1, result);
+	  /* Pick a new random starting private key */
+	  goto rekey;
+	}
 
     }
 
     /* Increment privkey by STEP */
     if((privkey[3] += STEP) < STEP)  /* Check for overflow */
       if(!++privkey[2])
-        if(!++privkey[1])
-          ++privkey[0];
+	if(!++privkey[1])
+	  ++privkey[0];
   }
 }
 
 /**** libsecp256k1 Overrides *************************************************/
 
 static void my_secp256k1_fe_inv_all_gej_var(secp256k1_fe *r,
-                                            const secp256k1_gej *a)
+					    const secp256k1_gej *a)
 {
   secp256k1_fe u;
   int i;
@@ -267,7 +327,7 @@ static void my_secp256k1_fe_inv_all_gej_var(secp256k1_fe *r,
 }
 
 static void my_secp256k1_ge_set_all_gej_var(secp256k1_ge *r,
-                                            const secp256k1_gej *a)
+					    const secp256k1_gej *a)
 {
   static secp256k1_fe azi[STEP];
   int i;
@@ -279,8 +339,8 @@ static void my_secp256k1_ge_set_all_gej_var(secp256k1_ge *r,
 }
 
 static void my_secp256k1_gej_add_ge_var(secp256k1_gej *r,
-                                        const secp256k1_gej *a,
-                                        const secp256k1_ge *b)
+					const secp256k1_gej *a,
+					const secp256k1_ge *b)
 {
   /* 8 mul, 3 sqr, 4 normalize, 12 mul_int/add/negate */
   secp256k1_fe z12, u1, u2, s1, s2, h, i, i2, h2, h3, t;
