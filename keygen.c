@@ -69,7 +69,7 @@ int main(int argc, char *argv[])
 //
 
 
-static void announce_result(int found, const u8 result[52])
+static void announce_result(int found, const u8 result[72])
 {
   align8 u8 priv_block[64], pub_block[64], cksum_block[64];
   align8 u8 priv_wif[64], wif[64], checksum[32];
@@ -92,17 +92,18 @@ static void announce_result(int found, const u8 result[52])
   /* Convert Private Key to WIF */
 
   /* Set up sha256 block for hashing the private key; length of 34 bytes */
-  sha256_prepare(priv_block, 34);
+  sha256_prepare(priv_block, 33);
   priv_block[0]=0x80;
   memcpy(priv_block+1, result, 32);
-  priv_block[33]=0x01;	/* 1=Compressed Public Key */
+  /* priv_block[33]=0x01;	/1* 1=Compressed Public Key *1/ */
 
   /* Compute checksum and copy first 4-bytes to end of private key */
+  sha256_prepare(cksum_block, 32);
   sha256_hash(cksum_block, priv_block);
   sha256_hash(checksum, cksum_block);
-  memcpy(priv_block+34, checksum, 4);
+  memcpy(priv_block+33, checksum, 4);
 
-  b58enc(priv_wif, priv_block, 38);
+  b58enc(priv_wif, priv_block, 37);
   /* printf("%s\n", priv_wif); */
 
 
