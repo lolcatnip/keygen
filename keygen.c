@@ -169,28 +169,37 @@ static void engine(int thread)
   /* Set up rmd160 block for an input length of 32 bytes */
   rmd160_prepare(rmd_block, 32);
 
-  rekey:
+  /* rekey: */
 
   // Generate a random private key. Specifically, any 256-bit number from 0x1
   // to 0xFFFF FFFF FFFF FFFF FFFF FFFF FFFF FFFE BAAE DCE6 AF48 A03B BFD2 5E8C
   // D036 4140 is a valid private key.
 
-  if((fd=open("/dev/urandom", O_RDONLY|O_NOCTTY)) == -1) {
-    perror("/dev/urandom");
-    return;
+  /* if((fd=open("/dev/urandom", O_RDONLY|O_NOCTTY)) == -1) { */
+  /*   perror("/dev/urandom"); */
+  /*   return; */
+  /* } */
+  /* /1* Use 32 bytes from /dev/urandom as starting private key *1/ */
+  /* do { */
+  /*   if((len=read(fd, privkey, 32)) != 32) { */
+  /*     if(len != -1) */
+	/* errno=EAGAIN; */
+  /*     perror("/dev/urandom"); */
+  /*     return; */
+  /*   } */
+  /* } while(privkey[0]+1 < 2);  /1* Ensure only valid private keys *1/ */
+  /* close(fd); */
+
+  if (isatty(0)) { // no stdin open from terminal
+      if((fd=open("/dev/urandom", O_RDONLY|O_NOCTTY)) == -1) {
+        perror("/dev/urandom");
+        return;
+      }
+  } else { // stdin from terminal
+      fd = 0;
   }
 
-  /* Use 32 bytes from /dev/urandom as starting private key */
-  do {
-    if((len=read(fd, privkey, 32)) != 32) {
-      if(len != -1)
-	errno=EAGAIN;
-      perror("/dev/urandom");
-      return;
-    }
-  } while(privkey[0]+1 < 2);  /* Ensure only valid private keys */
-
-  close(fd);
+  while(read(fd, privkey, 32) > 0) {
 
   /* Copy private key to secp256k1 scalar format */
   secp256k1_scalar_set_b32(&scalar_key, (u8 *)privkey, NULL);
@@ -203,23 +212,21 @@ static void engine(int thread)
 
   /* Create group elements for both the random private key and the value 1 */
   secp256k1_ecmult_gen(&sec_ctx->ecmult_gen_ctx, &base[STEP-1], &scalar_key);
-  secp256k1_ecmult_gen(&sec_ctx->ecmult_gen_ctx, &temp, &scalar_one);
-  secp256k1_ge_set_gej_var(&offset, &temp);
+  /* secp256k1_ecmult_gen(&sec_ctx->ecmult_gen_ctx, &temp, &scalar_one); */
+  /* secp256k1_ge_set_gej_var(&offset, &temp); */
 
   /* Main Loop */
 
-  printf("\r");  // This magically makes the loop faster by a smidge
+  /* printf("\r");  // This magically makes the loop faster by a smidge */
 
-  while(1) {
     /* Add 1 in Jacobian coordinates and save the result; repeat STEP times */
-    my_secp256k1_gej_add_ge_var(&base[0], &base[STEP-1], &offset);
-    for(k=1;k < STEP;k++)
-      my_secp256k1_gej_add_ge_var(&base[k], &base[k-1], &offset);
+    /* my_secp256k1_gej_add_ge_var(&base[0], &base[STEP-1], &offset); */
+    /* for(k=1;k < STEP;k++) */
+      /* my_secp256k1_gej_add_ge_var(&base[k], &base[k-1], &offset); */
 
     /* Convert all group elements from Jacobian to affine coordinates */
     my_secp256k1_ge_set_all_gej_var(rslt, base);
 
-    for(k=0;k < STEP;k++) {
 
       /* /1* Extract the 33-byte compressed public key from the group element *1/ */
       /* sha_block[0]=(secp256k1_fe_is_odd(&rslt[k].y) ? 0x03 : 0x02); */
@@ -272,15 +279,16 @@ static void engine(int thread)
       
       /* Compare hashed public key with byte patterns */
 
-	if(1) {
 	  /* key := privkey+k+1 */
 	  key[0]=privkey[0];
 	  key[1]=privkey[1];
 	  key[2]=privkey[2];
-	  if((key[3]=privkey[3]+k+1) < privkey[3])
-	    if(!++key[2])
-	      if(!++key[1])
-		++key[0];
+	  key[3]=privkey[3];
+
+	  /* if((key[3]=privkey[3]+k+1) < privkey[3]) */
+	  /*   if(!++key[2]) */
+	  /*     if(!++key[1]) */
+		/* ++key[0]; */
 
 	  /* Convert key to big-endian byte format */
 	  key[0]=be64(key[0]);
@@ -291,17 +299,15 @@ static void engine(int thread)
 	  /* Announce (PrivKey,PubKey) result */
 	  announce_result(1, result);
 	  /* Pick a new random starting private key */
-	  goto rekey;
-	}
+	  /* goto rekey; */
+  }
 
-    }
 
     /* Increment privkey by STEP */
     if((privkey[3] += STEP) < STEP)  /* Check for overflow */
       if(!++privkey[2])
 	if(!++privkey[1])
 	  ++privkey[0];
-  }
 }
 
 /**** libsecp256k1 Overrides *************************************************/
